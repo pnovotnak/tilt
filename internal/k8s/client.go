@@ -356,23 +356,72 @@ func (k *K8sClient) ToRawKubeConfigLoader() clientcmd.ClientConfig {
 	return k.clientLoader
 }
 
-func (k *K8sClient) Upsert(ctx context.Context, entities []K8sEntity, timeout time.Duration) ([]K8sEntity, error) {
-	result := make([]K8sEntity, 0, len(entities))
-	for _, e := range entities {
-		innerCtx, cancel := context.WithTimeout(ctx, timeout)
-		defer cancel()
+type upsertTaskResult struct {
+	K8sEntity K8sEntity
+	Error     error
+}
 
-		newEntity, err := k.escalatingUpdate(innerCtx, e)
-		if err != nil {
-			if ctx.Err() == context.DeadlineExceeded {
-				return nil, timeoutError(timeout)
+func (k *K8sClient) Upsert(ctx context.Context, entities []K8sEntity, timeout time.Duration) ([]K8sEntity, error) {
+	results := make([]K8sEntity, 0, len(entities))
+	tasksC := make(chan K8sEntity, len(entities))
+	resultsC := make(chan upsertTaskResult, len(entities))
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	worker := func(tasks chan K8sEntity, results chan upsertTaskResult) {
+		workerCtx, workerCancel := context.WithTimeout(ctx, timeout)
+		defer workerCancel()
+		for entity := range tasks {
+			newEntity, err := k.escalatingUpdate(workerCtx, entity)
+			if err != nil {
+				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					results <- upsertTaskResult{
+						K8sEntity: entity,
+						Error:     timeoutError(timeout),
+					}
+				} else {
+					results <- upsertTaskResult{
+						K8sEntity: entity,
+						Error:     err,
+					}
+				}
+			} else {
+				// If the update was successful, send the new entity to the results channel.
+				for _, ne := range newEntity {
+					results <- upsertTaskResult{
+						K8sEntity: ne,
+						Error:     nil,
+					}
+				}
 			}
-			return nil, err
 		}
-		result = append(result, newEntity...)
 	}
 
-	return result, nil
+	workers := 4
+	logger.Get(ctx).Infof("Upserting %d Kubernetes objects using %d workers", len(entities), workers)
+	for range workers {
+		go worker(tasksC, resultsC)
+	}
+
+	// Send all entities to the tasks channel.
+	for _, entity := range entities {
+		tasksC <- entity
+	}
+
+	for result := range resultsC {
+		if result.Error != nil {
+			cancel()
+			return nil, result.Error
+		}
+		results = append(results, result.K8sEntity)
+		if len(results) == len(entities) {
+			// If we've received results for all entities, we can close the results channel.
+			close(resultsC)
+		}
+	}
+
+	return results, nil
 }
 
 func (k *K8sClient) OwnerFetcher() OwnerFetcher {

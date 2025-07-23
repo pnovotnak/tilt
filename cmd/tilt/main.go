@@ -12,6 +12,7 @@ var version string
 var date string
 
 func main() {
+	println("Using custom tilt version")
 	cli.SetTiltInfo(model.TiltBuild{
 		Version: version,
 		Date:    date,
