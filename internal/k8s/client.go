@@ -398,7 +398,7 @@ func (k *K8sClient) Upsert(ctx context.Context, entities []K8sEntity, timeout ti
 		}
 	}
 
-	workers := 4
+	workers := 10
 	logger.Get(ctx).Infof("Upserting %d Kubernetes objects using %d workers", len(entities), workers)
 	for range workers {
 		go worker(tasksC, resultsC)

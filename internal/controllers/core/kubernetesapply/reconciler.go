@@ -344,7 +344,7 @@ func (r *Reconciler) runYAMLDeploy(ctx context.Context, spec v1alpha1.Kubernetes
 		return newK8sEntities, err
 	}
 
-	logger.Get(ctx).Infof("Applying YAML to cluster")
+	logger.Get(ctx).Infof("Applying YAML to cluster (multithreaded)")
 
 	timeout := spec.Timeout.Duration
 	if timeout == 0 {

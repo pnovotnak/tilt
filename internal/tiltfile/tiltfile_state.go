@@ -239,6 +239,7 @@ func (s *tiltfileState) loadManifests(tf *v1alpha1.Tiltfile) ([]model.Manifest, 
 		tfv1alpha1.NewPlugin(),
 		hasher.NewPlugin(),
 	)
+	s.logger.Infof("Loaded starlark Tiltfile in %s", time.Since(pkgInitTime))
 	if err != nil {
 		return nil, result, starkit.UnpackBacktrace(err)
 	}
@@ -247,6 +248,7 @@ func (s *tiltfileState) loadManifests(tf *v1alpha1.Tiltfile) ([]model.Manifest, 
 	if err != nil {
 		return nil, result, err
 	}
+	s.logger.Infof("Assembled in %s", time.Since(pkgInitTime))
 
 	us, err := updatesettings.GetState(result)
 	if err != nil {
@@ -260,6 +262,7 @@ func (s *tiltfileState) loadManifests(tf *v1alpha1.Tiltfile) ([]model.Manifest, 
 
 	manifests := []model.Manifest{}
 	k8sContextState, err := k8scontext.GetState(result)
+	s.logger.Infof("Got state in %s", time.Since(pkgInitTime))
 	if err != nil {
 		return nil, result, err
 	}
